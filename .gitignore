@@ -5,3 +5,5 @@ data/**/*.pkl
 data/**/*.pt
 *.fasta
 *.csv
+*.fas
+models/*

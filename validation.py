@@ -48,7 +48,7 @@ def compute_model_statistics(model, dataloader, map_label_to_subtype):
     # compute statistics
     model.eval()
     with torch.no_grad():
-        for x, y, _, _, _, _, _ in tqdm(dataloader, desc="Computing model statistics"):
+        for x, y, _ in tqdm(dataloader, desc="Computing model statistics"):
             x = x.to(DEVICE)
             y = y.to(DEVICE)
             _, _, classification = model(x)
@@ -81,7 +81,10 @@ def compute_model_statistics(model, dataloader, map_label_to_subtype):
         TP, TN, FP, FN = subtype_tp[subtype], subtype_tn[subtype], subtype_fp[subtype], subtype_fn[subtype]
         if FN + TP == 0:
             print("Warning: no positive examples for subtype", subtype)
-        subtype_accuracy[subtype] = (TP + TN) / (TP + TN + FP + FN)
+        # subtype_accuracy[subtype] = (TP + TN) / (TP + TN + FP + FN)
+        # number of samples for the subtype
+            
+        subtype_accuracy[subtype] = TP / (TP + FN) if TP + FN > 0 else 0
         subtype_precision[subtype] = TP / (TP + FP) if TP + FP > 0 else 0
         subtype_sensitivity[subtype] = TP / (TP + FN) if TP + FN > 0 else 0
         subtype_specificity[subtype] = TN / (TN + FP) if TN + FP > 0 else 0

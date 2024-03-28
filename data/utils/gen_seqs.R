@@ -4,13 +4,15 @@ devtools::install_local("E:\\projects\\seqspawnR_with_loadingbars\\SeqSpawnR", f
 library(SeqSpawnR)
 library(seqinr)
 
-N <- 3000 #Number of sequences each subtype should have after generation
-input_file <- "C:\\Users\\Dan\\Desktop\\CDC\\Projects\\dives\\data\\preproc\\sequences.fasta"
+
+input_file <- "C:\\Users\\Dan\\Desktop\\CDC\\Projects\\dives\\data\\raw\\complete_original_sequences_withsubtypes.fasta"
 gen_dir <- "C:\\Users\\Dan\\Desktop\\CDC\\Projects\\dives\\data\\preproc\\generated\\"
 
 
+N <- 3000 #Number of sequences each subtype should have after generation
+
+
 # Read sequences from a FASTA file
-# fasta_sequences <- read.fasta("E:\\projects\\hiv_deeplearning\\stremb\\data_pol\\sequences.fasta", whole.header=TRUE, forceDNAtolower = FALSE)
 fasta_sequences <- read.fasta(input_file, whole.header=TRUE, forceDNAtolower = FALSE)
 
 # 1. Count unique subtypes and sequences
@@ -35,7 +37,7 @@ for (name in names(fasta_sequences)) {
   write(ref_sequence, output_file, append = TRUE)
   
   quota <- spawn_quotas[subtype]
-  spawned <- SeqSpawnR::spawn_sequences(quota, seed = ref_sequence, snps = 10)
+  spawned <- SeqSpawnR::spawn_sequences(quota, seed = ref_sequence, snps = 20)
   
   for (i in 1:length(spawned)) {
     new_name <- paste(name, "_spawned_", i, sep = "")
@@ -47,9 +49,7 @@ for (name in names(fasta_sequences)) {
 }
 
 # 5. Concatenate all output files
-# output_files <- list.files(path = "E:\\projects\\hiv_deeplearning\\stremb\\data_pol\\generated\\", pattern = "*_generated.fasta", full.names = TRUE)
 output_files <- list.files(path = gen_dir, pattern = "*_generated.fasta", full.names = TRUE)
-# final_output <- "E:\\projects\\hiv_deeplearning\\stremb\\data_pol\\generated\\final_output.fasta"
 final_output <- paste0(gen_dir, "final_output.fasta")
 
 for (file in output_files) {

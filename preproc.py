@@ -3,7 +3,6 @@ Proprocesses molecular data for use in pytorch contrastive learning model.
 
 INPUT: 
     a. Fasta file with all sequences. Sequence name is of format >{subtype}.{sequence_id}
-    b. Subtype distance matrix (csv file)
 
 0. Perform train test split
 1. Create integer encoding tensor 
@@ -13,30 +12,26 @@ INPUT:
     c. map_subtype_to_seqids: maps subtype to list of sequence ids
     d. map_seqid_to_subtype: maps sequence id to subtype
     e. map_seqid_to_sequence: maps sequence id to sequence
-3. Create contrast set for each sequence
-    1. Find similar sequences (same subtype)
-    2. Find dissimilar sequences (different subtype)
-        include both the closest and farther subtypes which are not from the same subtype
-    Set size = 5 similar + 5 close dissimilar + 5 random dissimilar = 15 sequences per contrast set
 
 """
 
 
 import torch
+from torch.multiprocessing import Pool
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 import pandas as pd
 from tqdm import tqdm
 import pickle
 import random
 
-# input parameters
 
-fasta_file = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\preproc\augmented_sequences.fasta"
+# fasta_file = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\preproc\generated\final_output.fasta"
+# fasta_file = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\raw\HIV-1_Subtype_REF_2020_genome_DNA_LANL_NOTaln_459taxa.fas"
+# fasta_file = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\raw\HIV-1_SIV_HIV-2_Subtype_REF_2020_21_genomes_DNA_LANL_NOTaln_511taxa.fas"
+fasta_file = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\raw\HIV1_NXT_2021_pol_DNA_2809taxa_BS_notaln_subtype_not_in_name+SA_1148taxa.fasta"
 metadata_file = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\preproc\subtypes.csv"
-output_dir = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\preproc"
-
-
-# Global variables
+output_dir = r"C:\Users\Dan\Desktop\CDC\Projects\dives\data\validation_preproc\HIV1_NXT_2021_pol_DNA_2809taxa_BS_notaln_subtype_not_in_name+SA_1148taxa"
+# SEQ_LEN = 10000
 SEQ_LEN = 3000
 RAND_SEED = 42
 random.seed(RAND_SEED)
@@ -55,7 +50,6 @@ def get_subtype(seqid):
 def main():
     print("Reading fasta file...")
     seqs_dictionary = read_fasta(fasta_file)
-    print("Reading distance matrix file...")
     print("Splitting into train and test sets...")
     train_seqs, test_seqs = strat_train_test_split(seqs_dictionary)
 
@@ -103,11 +97,8 @@ def main():
 
 
 def read_fasta(fasta_file):
-    # global SEQ_LEN
-
     seqs = {}
     max_len = 0
-
     with open(fasta_file, "r") as f:
         last_id = ""
         for i, line in enumerate(f):
@@ -118,8 +109,6 @@ def read_fasta(fasta_file):
                 seqs[last_id] = line.strip()
                 if len(line.strip()) > max_len:
                     max_len = len(line.strip())
-
-    # SEQ_LEN = max_len
     return seqs
 
 
@@ -148,7 +137,6 @@ def get_consensus(seqs):
 def train_test_split(seqs_dict):
     seqs = list(seqs_dict.keys())
     random.shuffle(seqs)
-    # train_seqs, test_seqs = sklearn_train_test_split(seqs, test_size=0.2, random_state=RAND_SEED)
     train_seqs, test_seqs = sklearn_train_test_split(seqs, test_size=0.2, random_state=RAND_SEED)
     train_seqs_dict = {seq: seqs_dict[seq] for seq in train_seqs}
     test_seqs_dict = {seq: seqs_dict[seq] for seq in test_seqs}
@@ -169,6 +157,8 @@ def create_integer_encoding(seqs_dict):
     X = torch.zeros(len(seqs_dict), SEQ_LEN, dtype=torch.float)
     for row, (id, seq) in tqdm(enumerate(seqs_dict.items()), desc="Integer Encoding", total=len(seqs_dict.keys())):
         for col, nucl in enumerate(seq):
+            if col >= SEQ_LEN:
+                break
             nucl = nucl.upper()
             if nucl not in ["A", "C", "G", "T"]:
                 X[row][col] = 0
@@ -190,7 +180,6 @@ def create_labels_tensor(seqs_dict, map_subtype_to_label):
         subtype = get_subtype(id)
         labels[row] = map_subtype_to_label[subtype]
     return labels
-
 
 
 def save(*args):
@@ -232,7 +221,6 @@ def create_maps(train_seqs, test_seqs):
     for row, (id, seq) in tqdm(enumerate(train_seqs.items()), desc="Creating Train Maps", total=len(train_seqs.keys())):
         train_map_seqid_to_row[id] = row
         train_map_row_to_seqid[row] = id
-        # subtype = id.split(".")[0]
         subtype = get_subtype(id)
         train_map_seqid_to_subtype[id] = subtype
         if subtype not in train_map_subtype_to_seqids:
@@ -258,11 +246,7 @@ def create_maps(train_seqs, test_seqs):
     map_label_to_subtype = {}
     map_subtype_to_label = {}
 
-    # for i, subtype in enumerate(set(train_subtypes + test_subtypes)):
-    #     map_label_to_subtype[i] = subtype
-    #     map_subtype_to_label[subtype] = i
-
-    #i want to use the metadata file to ensure all subtypes are included in the label map
+    #Using the metadata file to ensure all subtypes are included in the label map
     for i, subtype in enumerate(meta["subtype"].unique()):
         map_label_to_subtype[i] = subtype
         map_subtype_to_label[subtype] = i
@@ -280,5 +264,117 @@ def create_maps(train_seqs, test_seqs):
         map_subtype_to_label,
     )
 
+
+def main_inference():
+    seqs = read_fasta(fasta_file)
+    seqs_tensor = create_integer_encoding(seqs)
+    map_seqid_to_row, map_row_to_seqid = create_maps_inference(seqs)
+    save(
+        (seqs_tensor, "seqs_tensor"),
+        (map_seqid_to_row, "map_seqid_to_row"),
+        (map_row_to_seqid, "map_row_to_seqid"),
+    )
+
+
+def create_maps_inference(seqs):
+    """
+    creating these maps:
+        1. map_seqid_to_row,
+        2. map_row_to_seqid,
+    """
+
+    map_seqid_to_row = {}
+    map_row_to_seqid = {}
+    for row, (id, seq) in tqdm(enumerate(seqs.items()), desc="Creating Inference Maps", total=len(seqs.keys())):
+        map_seqid_to_row[id] = row
+        map_row_to_seqid[row] = id
+    
+    return map_seqid_to_row, map_row_to_seqid
+
+
+def main_validation():
+    seqs = read_fasta(fasta_file)
+    seqs_tensor = create_integer_encoding(seqs)
+    map_seqid_to_row, map_row_to_seqid, map_subtype_to_seqids, map_seqid_to_subtype, map_label_to_subtype, map_subtype_to_label = create_maps_validation(seqs)
+
+    # create labels tensor
+    
+    def custom_get_subtype(seqid):
+        # return seqid.split(".")[1]
+        # return get_subtype(seqid)
+        return "A"
+    
+    labels = torch.zeros(len(seqs))
+    for row, (id, seq) in tqdm(enumerate(seqs.items()), desc="Creating Labels Tensor", total=len(seqs.keys())):
+        subtype = custom_get_subtype(id)
+        try:
+            labels[row] = map_subtype_to_label[subtype]
+        except:
+            labels[row] = -1
+
+    save(
+        (seqs_tensor, "seqs_tensor"),
+        (labels, "labels_tensor"),
+        (map_seqid_to_row, "map_seqid_to_row"),
+        (map_row_to_seqid, "map_row_to_seqid"),
+        (map_subtype_to_seqids, "map_subtype_to_seqids"),
+        (map_seqid_to_subtype, "map_seqid_to_subtype"),
+        (map_label_to_subtype, "map_label_to_subtype"),
+        (map_subtype_to_label, "map_subtype_to_label"),
+    )
+
+
+def create_maps_validation(seqs):
+    """
+    creating these maps:
+        1. map_seqid_to_row,
+        2. map_row_to_seqid,
+        3. map_subtype_to_seqids,
+        4. map_seqid_to_subtype,
+        5. map_label_to_subtype,
+        6. map_subtype_to_label,
+    """
+
+    def custom_get_subtype(seqid):
+        # return seqid.split(".")[1]
+        return "A"
+
+    map_seqid_to_row = {}
+    map_row_to_seqid = {}
+    map_subtype_to_seqids = {}
+    map_seqid_to_subtype = {}
+    subtypes = []
+    for row, (id, seq) in tqdm(enumerate(seqs.items()), desc="Creating Maps", total=len(seqs.keys())):
+        map_seqid_to_row[id] = row
+        map_row_to_seqid[row] = id
+        subtype = custom_get_subtype(id)
+        map_seqid_to_subtype[id] = subtype
+        if subtype not in map_subtype_to_seqids:
+            map_subtype_to_seqids[subtype] = []
+        map_subtype_to_seqids[subtype].append(id)
+        subtypes.append(subtype)
+
+    map_label_to_subtype = {}
+    map_subtype_to_label = {}
+
+    #Using the metadata file to ensure all subtypes are included in the label map
+    for i, subtype in enumerate(meta["subtype"].unique()):
+        map_label_to_subtype[i] = subtype
+        map_subtype_to_label[subtype] = i
+
+    return (
+        map_seqid_to_row,
+        map_row_to_seqid,
+        map_subtype_to_seqids,
+        map_seqid_to_subtype,
+        map_label_to_subtype,
+        map_subtype_to_label,
+    )
+
+
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    # main_inference()
+    main_validation()

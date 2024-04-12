@@ -12,9 +12,7 @@ INPUT:
     c. map_subtype_to_seqids: maps subtype to list of sequence ids
     d. map_seqid_to_subtype: maps sequence id to subtype
     e. map_seqid_to_sequence: maps sequence id to sequence
-
 """
-
 
 import torch
 from torch.multiprocessing import Pool
@@ -39,6 +37,7 @@ meta = pd.read_csv(metadata_file, encoding="ISO-8859-1")
 
 # we only use meta to map sequence ids to subtypes, so let's just read that map as a dict, where the key is the sequence id and the value is the subtype
 get_subtype_dict = {seqid: subtype for seqid, subtype in zip(meta["id"].values, meta["subtype"].values)}
+
 
 def get_subtype(seqid):
     subtype, sid = seqid.split(".")
@@ -76,7 +75,6 @@ def main():
 
     train_labels_tensor = create_labels_tensor(train_seqs, map_subtype_to_label)
     test_labels_tensor = create_labels_tensor(test_seqs, map_subtype_to_label)
-
 
     save(
         (train_seqs_tensor, "train_seqs_tensor"),
@@ -131,7 +129,6 @@ def get_consensus(seqs):
         else:
             consensus += max(counts, key=counts.get)
     return consensus
-            
 
 
 def train_test_split(seqs_dict):
@@ -191,12 +188,14 @@ def save(*args):
             with open(f"{output_dir}/{name}.pkl", "wb") as f:
                 pickle.dump(arg, f)
 
+
 def load(name):
     if name.endswith(".pt"):
         return torch.load(f"{output_dir}/{name}")
     else:
         with open(f"{output_dir}/{name}", "rb") as f:
             return pickle.load(f)
+
 
 def create_maps(train_seqs, test_seqs):
     """
@@ -246,7 +245,7 @@ def create_maps(train_seqs, test_seqs):
     map_label_to_subtype = {}
     map_subtype_to_label = {}
 
-    #Using the metadata file to ensure all subtypes are included in the label map
+    # Using the metadata file to ensure all subtypes are included in the label map
     for i, subtype in enumerate(meta["subtype"].unique()):
         map_label_to_subtype[i] = subtype
         map_subtype_to_label[subtype] = i
@@ -288,7 +287,7 @@ def create_maps_inference(seqs):
     for row, (id, seq) in tqdm(enumerate(seqs.items()), desc="Creating Inference Maps", total=len(seqs.keys())):
         map_seqid_to_row[id] = row
         map_row_to_seqid[row] = id
-    
+
     return map_seqid_to_row, map_row_to_seqid
 
 
@@ -298,12 +297,12 @@ def main_validation():
     map_seqid_to_row, map_row_to_seqid, map_subtype_to_seqids, map_seqid_to_subtype, map_label_to_subtype, map_subtype_to_label = create_maps_validation(seqs)
 
     # create labels tensor
-    
+
     def custom_get_subtype(seqid):
         # return seqid.split(".")[1]
         # return get_subtype(seqid)
         return "A"
-    
+
     labels = torch.zeros(len(seqs))
     for row, (id, seq) in tqdm(enumerate(seqs.items()), desc="Creating Labels Tensor", total=len(seqs.keys())):
         subtype = custom_get_subtype(id)
@@ -357,7 +356,7 @@ def create_maps_validation(seqs):
     map_label_to_subtype = {}
     map_subtype_to_label = {}
 
-    #Using the metadata file to ensure all subtypes are included in the label map
+    # Using the metadata file to ensure all subtypes are included in the label map
     for i, subtype in enumerate(meta["subtype"].unique()):
         map_label_to_subtype[i] = subtype
         map_subtype_to_label[subtype] = i
@@ -370,8 +369,6 @@ def create_maps_validation(seqs):
         map_label_to_subtype,
         map_subtype_to_label,
     )
-
-
 
 
 if __name__ == "__main__":
